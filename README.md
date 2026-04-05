@@ -8,7 +8,7 @@ A serialization framework for C++. Inspired by serde.
 
 ```toml
 [dependencies]
-"github.com/misut/txn" = "0.1.0"
+"github.com/misut/txn" = "0.2.0"
 ```
 
 ### CMake
