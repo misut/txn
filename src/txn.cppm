@@ -1,5 +1,6 @@
 export module txn;
 import std;
+import refl;
 
 export namespace txn {
 
@@ -94,6 +95,11 @@ template<typename T>
 concept Describable = requires {
     { txn_describe(static_cast<T*>(nullptr)) };
 };
+
+// Auto-reflection applies only when the user has not provided a manual
+// txn_describe() override. Describable wins to keep custom key names.
+template<typename T>
+concept AutoReflectable = refl::Reflectable<T> && !Describable<T>;
 
 template<typename V>
 concept ValueLike = requires(V const& v) {
@@ -226,6 +232,38 @@ T convert_value(V const& v, std::string const& path) {
         }, desc.fields);
         return result;
 
+    } else if constexpr (AutoReflectable<T>) {
+        if (!v.is_table())
+            throw ConversionError(path,
+                std::format("expected table, got {}", type_name_of(v)));
+        auto const& table = v.as_table();
+        T result{};
+        constexpr auto N = refl::tuple_size_v<T>;
+        [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            (([&] {
+                constexpr auto key = refl::name_of<T, Is>();
+                auto full_path = path.empty()
+                    ? std::string{key}
+                    : std::format("{}.{}", path, key);
+                using M = std::decay_t<decltype(refl::get<Is>(result))>;
+                auto it = table.find(std::string{key});
+                if constexpr (is_optional_v<M>) {
+                    if (it == table.end()) {
+                        refl::get<Is>(result) = std::nullopt;
+                    } else {
+                        using Inner = optional_inner_t<M>;
+                        refl::get<Is>(result) = convert_value<Inner, V>(it->second, full_path);
+                    }
+                } else {
+                    if (it == table.end()) {
+                        throw ConversionError(full_path, "missing required key");
+                    }
+                    refl::get<Is>(result) = convert_value<M, V>(it->second, full_path);
+                }
+            }()), ...);
+        }(std::make_index_sequence<N>{});
+        return result;
+
     } else {
         static_assert(always_false<T>, "type is not deserializable");
     }
@@ -288,6 +326,29 @@ V serialize_value(T const& obj) {
                 }
             }()), ...);
         }, desc.fields);
+        return V{std::move(tbl)};
+
+    } else if constexpr (AutoReflectable<T>) {
+        using Tbl = std::decay_t<decltype(std::declval<V>().as_table())>;
+        Tbl tbl;
+        constexpr auto N = refl::tuple_size_v<T>;
+        [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            (([&] {
+                constexpr auto key = refl::name_of<T, Is>();
+                using M = std::decay_t<decltype(refl::get<Is>(obj))>;
+                if constexpr (is_optional_v<M>) {
+                    auto const& val = refl::get<Is>(obj);
+                    if (val.has_value()) {
+                        using Inner = optional_inner_t<M>;
+                        tbl.emplace(std::string{key},
+                            serialize_value<V, Inner>(*val));
+                    }
+                } else {
+                    tbl.emplace(std::string{key},
+                        serialize_value<V, M>(refl::get<Is>(obj)));
+                }
+            }()), ...);
+        }(std::make_index_sequence<N>{});
         return V{std::move(tbl)};
 
     } else {

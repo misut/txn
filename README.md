@@ -25,22 +25,18 @@ target_link_libraries(your_target PRIVATE txn)
 import txn;
 import std;
 
-#include "txn_describe.h"
-
 struct Config {
     std::string host;
     int port;
     std::optional<bool> debug;
 };
-TXN_DESCRIBE(Config, host, port, debug)
-```
 
-Use with any value type that satisfies `txn::ValueLike`:
-
-```cpp
 auto cfg = txn::from_value<Config>(some_value);
 auto val = txn::to_value<SomeValue>(cfg);
 ```
+
+Aggregate structs are reflected automatically — field names are inferred.
+For custom keys, provide a manual `txn_describe()` (see below).
 
 ## ValueLike Concept
 
@@ -67,25 +63,36 @@ No inheritance or registration needed — just satisfy the concept.
 | `std::optional<T>` | absent key → `nullopt` |
 | `std::vector<T>` | array |
 | `std::map<std::string, V>` | table |
-| Described structs | table (recursive) |
+| Aggregate structs | table (auto-reflected field names) |
 
-## TXN_DESCRIBE
+## Auto-Reflection
 
-Macro that generates a `txn_describe()` function for a struct:
+Aggregate structs are serialized automatically using field names as keys.
+Powered by the internal `refl` module (Clang-only, up to 16 fields).
+
+Limitations: aggregate types only (no base classes, no reference members,
+default-constructible members required). Nested aggregates may need manual
+`txn_describe` due to brace elision.
+
+## Custom Keys
+
+For custom key names, provide a `txn_describe()` overload. It takes
+precedence over auto-reflection:
 
 ```cpp
-TXN_DESCRIBE(MyStruct, field1, field2, field3)
+struct Event { std::string userId; int ts; };
+inline auto txn_describe(Event*) {
+    return txn::describe<Event>(
+        txn::field(&Event::userId, "user_id"),
+        txn::field(&Event::ts, "timestamp"));
+}
 ```
 
-Or write it manually:
+Or use the `TXN_DESCRIBE` macro when keys match field names:
 
 ```cpp
-auto txn_describe(MyStruct*) {
-    return txn::describe<MyStruct>(
-        txn::field(&MyStruct::field1, "field1"),
-        txn::field(&MyStruct::field2, "custom_key")
-    );
-}
+#include "txn_describe.h"
+TXN_DESCRIBE(MyStruct, field1, field2, field3)
 ```
 
 ## Error Handling
