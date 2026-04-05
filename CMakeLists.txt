@@ -14,7 +14,6 @@ target_sources(txn-modules
     ${CMAKE_CURRENT_SOURCE_DIR}/src/refl.cppm
     ${CMAKE_CURRENT_SOURCE_DIR}/src/txn.cppm
 )
-target_include_directories(txn-modules PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 add_library(txn ALIAS txn-modules)
 

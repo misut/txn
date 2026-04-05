@@ -88,12 +88,8 @@ inline auto txn_describe(Event*) {
 }
 ```
 
-Or use the `TXN_DESCRIBE` macro when keys match field names:
-
-```cpp
-#include "txn_describe.h"
-TXN_DESCRIBE(MyStruct, field1, field2, field3)
-```
+Use this also when auto-reflection cannot apply (non-aggregate types,
+nested aggregates, etc.).
 
 ## Error Handling
 

@@ -1,8 +1,6 @@
 import txn;
 import std;
 
-#include "txn_describe.h"
-
 // --- MockValue: satisfies txn::ValueLike for standalone testing ---
 
 struct MockValue;
@@ -67,30 +65,49 @@ struct Point {
     int x;
     int y;
 };
-TXN_DESCRIBE(Point, x, y)
+inline auto txn_describe(Point*) {
+    return txn::describe<Point>(
+        txn::field(&Point::x, "x"),
+        txn::field(&Point::y, "y"));
+}
 
 struct Server {
     std::string host;
     int port;
     std::optional<bool> debug;
 };
-TXN_DESCRIBE(Server, host, port, debug)
+inline auto txn_describe(Server*) {
+    return txn::describe<Server>(
+        txn::field(&Server::host, "host"),
+        txn::field(&Server::port, "port"),
+        txn::field(&Server::debug, "debug"));
+}
 
 struct Config {
     Server server;
     std::vector<std::string> tags;
 };
-TXN_DESCRIBE(Config, server, tags)
+inline auto txn_describe(Config*) {
+    return txn::describe<Config>(
+        txn::field(&Config::server, "server"),
+        txn::field(&Config::tags, "tags"));
+}
 
 struct WithVecStruct {
     std::vector<Point> points;
 };
-TXN_DESCRIBE(WithVecStruct, points)
+inline auto txn_describe(WithVecStruct*) {
+    return txn::describe<WithVecStruct>(
+        txn::field(&WithVecStruct::points, "points"));
+}
 
 struct WithMap {
     std::map<std::string, int> env;
 };
-TXN_DESCRIBE(WithMap, env)
+inline auto txn_describe(WithMap*) {
+    return txn::describe<WithMap>(
+        txn::field(&WithMap::env, "env"));
+}
 
 // --- Auto-reflection test structs (no TXN_DESCRIBE) ---
 
