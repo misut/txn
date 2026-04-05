@@ -19,7 +19,7 @@ add_library(txn ALIAS txn-modules)
 
 target_compile_definitions(txn-modules PUBLIC
     EXON_PKG_NAME="txn"
-    EXON_PKG_VERSION="0.1.0"
+    EXON_PKG_VERSION="0.2.0"
 )
 
 add_executable(test-refl)
