@@ -8,11 +8,15 @@ set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
 set(CMAKE_CXX_MODULE_STD ON)
 project(txn LANGUAGES CXX)
 
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../refl ${CMAKE_BINARY_DIR}/_deps/refl-build)
+
 add_library(txn-modules)
 target_sources(txn-modules
     PUBLIC FILE_SET CXX_MODULES BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/refl.cppm
     ${CMAKE_CURRENT_SOURCE_DIR}/src/txn.cppm
+)
+target_link_libraries(txn-modules PUBLIC
+    refl
 )
 
 add_library(txn ALIAS txn-modules)
@@ -20,14 +24,6 @@ add_library(txn ALIAS txn-modules)
 target_compile_definitions(txn-modules PUBLIC
     EXON_PKG_NAME="txn"
     EXON_PKG_VERSION="0.2.0"
-)
-
-add_executable(test-refl)
-target_sources(test-refl PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests/refl.cpp
-)
-target_link_libraries(test-refl PRIVATE
-    txn-modules
 )
 
 add_executable(test-serde)
