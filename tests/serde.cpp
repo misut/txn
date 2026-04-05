@@ -92,6 +92,32 @@ struct WithMap {
 };
 TXN_DESCRIBE(WithMap, env)
 
+// --- Auto-reflection test structs (no TXN_DESCRIBE) ---
+
+struct AutoPoint {
+    int x;
+    int y;
+};
+
+struct AutoServer {
+    std::string host;
+    int port;
+    std::optional<bool> debug;
+};
+
+struct AutoWithVec {
+    std::vector<int> items;
+};
+
+// Override: manual txn_describe takes precedence, enabling custom keys.
+struct Aliased {
+    int value;
+};
+inline auto txn_describe(Aliased*) {
+    return txn::describe<Aliased>(
+        txn::field(&Aliased::value, "v"));
+}
+
 // --- Test helpers ---
 
 int failed = 0;
@@ -282,6 +308,68 @@ void test_roundtrip() {
     check(restored.tags.size() == 2 && restored.tags[1] == "v2", "roundtrip tags");
 }
 
+// --- Auto-reflection tests ---
+
+void test_auto_simple() {
+    auto v = make_table({{"x", MockValue{std::int64_t{7}}},
+                         {"y", MockValue{std::int64_t{8}}}});
+    auto p = txn::from_value<AutoPoint>(v);
+    check(p.x == 7 && p.y == 8, "auto simple struct from_value");
+}
+
+void test_auto_to_value() {
+    AutoPoint p{11, 22};
+    auto v = txn::to_value<MockValue>(p);
+    check(v.is_table(), "auto to_value is table");
+    check(v.as_table().at("x").as_integer() == 11, "auto to_value x");
+    check(v.as_table().at("y").as_integer() == 22, "auto to_value y");
+}
+
+void test_auto_with_optional() {
+    auto v = make_table({
+        {"host", MockValue{"h"}},
+        {"port", MockValue{std::int64_t{80}}}
+    });
+    auto s = txn::from_value<AutoServer>(v);
+    check(s.host == "h" && s.port == 80, "auto server fields");
+    check(!s.debug.has_value(), "auto optional absent");
+
+    AutoServer out{"x", 1, true};
+    auto ov = txn::to_value<MockValue>(out);
+    check(ov.as_table().at("debug").as_bool() == true, "auto optional to_value");
+}
+
+void test_auto_with_vector() {
+    auto v = make_table({{"items", MockValue{MockArray{
+        MockValue{std::int64_t{1}},
+        MockValue{std::int64_t{2}},
+        MockValue{std::int64_t{3}}
+    }}}});
+    auto w = txn::from_value<AutoWithVec>(v);
+    check(w.items.size() == 3 && w.items[2] == 3, "auto vector field");
+}
+
+void test_auto_roundtrip() {
+    AutoServer original{"example.com", 443, true};
+    auto v = txn::to_value<MockValue>(original);
+    auto restored = txn::from_value<AutoServer>(v);
+    check(restored.host == "example.com", "auto roundtrip host");
+    check(restored.port == 443, "auto roundtrip port");
+    check(restored.debug.has_value() && *restored.debug == true, "auto roundtrip debug");
+}
+
+void test_describe_priority_over_auto() {
+    // Aliased has a manual txn_describe with key "v"; auto-reflection is NOT used.
+    auto v = make_table({{"v", MockValue{std::int64_t{42}}}});
+    auto a = txn::from_value<Aliased>(v);
+    check(a.value == 42, "Describable override reads key 'v'");
+
+    Aliased out{99};
+    auto ov = txn::to_value<MockValue>(out);
+    check(ov.as_table().contains("v"), "Describable override writes key 'v'");
+    check(!ov.as_table().contains("value"), "auto-reflection did not run");
+}
+
 int main() {
     test_string();
     test_integer();
@@ -301,6 +389,12 @@ int main() {
     test_to_value_optional_absent();
     test_to_value_vector();
     test_roundtrip();
+    test_auto_simple();
+    test_auto_to_value();
+    test_auto_with_optional();
+    test_auto_with_vector();
+    test_auto_roundtrip();
+    test_describe_priority_over_auto();
 
     if (failed > 0) {
         std::println(std::cerr, "\n{} test(s) failed", failed);
