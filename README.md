@@ -68,7 +68,9 @@ No inheritance or registration needed — just satisfy the concept.
 ## Auto-Reflection
 
 Aggregate structs are serialized automatically using field names as keys.
-Powered by the internal `refl` module (Clang-only, up to 16 fields).
+Powered by the internal `refl` module (up to 16 fields).
+
+Supported compilers: Clang (`__PRETTY_FUNCTION__`) and MSVC (`__FUNCSIG__`).
 
 Limitations: aggregate types only (no base classes, no reference members,
 default-constructible members required). Nested aggregates may need manual
