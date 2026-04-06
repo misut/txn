@@ -1,4 +1,4 @@
-// Minimal aggregate reflection module (self-contained, Clang-only).
+// Minimal aggregate reflection module (self-contained, Clang / MSVC).
 // Provides field count, field access, and field name extraction for
 // C++23 aggregate types. Designed to be replaced by std::meta (C++26).
 //
@@ -6,7 +6,7 @@
 //   - Aggregates with nested aggregates may overcount due to brace elision;
 //     use an explicit descriptor override (e.g. txn_describe) for such types.
 //   - Max 16 direct fields.
-//   - Clang only (parses __PRETTY_FUNCTION__).
+//   - Clang (__PRETTY_FUNCTION__) / MSVC (__FUNCSIG__).
 //   - Requires T to be default-constructible (for name extraction).
 
 export module refl;
@@ -107,24 +107,47 @@ inline constexpr storage<T> external_storage{};
 template<typename T>
 inline constexpr T const& external = external_storage<T>.value;
 
-// When instantiated with a concrete pointer NTTP, __PRETTY_FUNCTION__
-// embeds the pointer's expression like "&refl::detail::external_storage<T>.value.NAME".
-template<auto* P>
+// When instantiated with a concrete pointer NTTP, the compiler's
+// function-signature string embeds the pointer's expression:
+//   Clang:  "...pretty_ptr() [P = &...external_storage<T>.value.NAME]"
+//   MSVC:   "...pretty_ptr<T,I,&...external_storage<struct T>->value->NAME>(void) noexcept"
+// MSVC folds pointer NTTPs that share the same type and offset across
+// different storage objects, producing incorrect names. Extra T and I
+// template parameters force distinct instantiations and correct output.
+#if defined(_MSC_VER)
+template<typename, std::size_t, auto*>
+#else
+template<auto*>
+#endif
 consteval std::string_view pretty_ptr() noexcept {
+#if defined(_MSC_VER)
+    return std::string_view{__FUNCSIG__};
+#else
     return std::string_view{__PRETTY_FUNCTION__};
+#endif
 }
 
 template<typename T, std::size_t I>
 consteval std::string_view field_name_impl() noexcept {
     constexpr auto tup = to_tuple(external<T>);
     constexpr auto ptr = &std::get<I>(tup);
+#if defined(_MSC_VER)
+    constexpr auto sv = pretty_ptr<T, I, ptr>();
+    // MSVC: "...->value->FIELD>(void) noexcept"
+    constexpr auto end = sv.rfind(">(void)");
+    static_assert(end != std::string_view::npos, "refl: no '>(void)' in __FUNCSIG__");
+    constexpr auto arrow = sv.rfind("->", end);
+    static_assert(arrow != std::string_view::npos, "refl: no '->' in __FUNCSIG__");
+    return sv.substr(arrow + 2, end - arrow - 2);
+#else
     constexpr auto sv = pretty_ptr<ptr>();
-    // Locate the closing bracket of the NTTP list and the last '.' before it.
+    // Clang: find the closing ']' of the NTTP list and the last '.' before it.
     constexpr auto rbr = sv.rfind(']');
     static_assert(rbr != std::string_view::npos, "refl: no ']' in __PRETTY_FUNCTION__");
     constexpr auto dot = sv.rfind('.', rbr);
     static_assert(dot != std::string_view::npos, "refl: no '.' in __PRETTY_FUNCTION__");
     return sv.substr(dot + 1, rbr - dot - 1);
+#endif
 }
 
 } // namespace refl::detail
