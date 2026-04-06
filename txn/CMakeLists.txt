@@ -8,6 +8,11 @@ set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
 set(CMAKE_CXX_MODULE_STD ON)
 project(txn LANGUAGES CXX)
 
+if(MSVC)
+    add_compile_options(/W4 /wd4996 /utf-8)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+endif()
+
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../refl ${CMAKE_BINARY_DIR}/_deps/refl-build)
 
 add_library(txn-modules)
@@ -21,9 +26,10 @@ target_link_libraries(txn-modules PUBLIC
 
 add_library(txn ALIAS txn-modules)
 
-target_compile_definitions(txn-modules PUBLIC
-    EXON_PKG_NAME="txn"
-    EXON_PKG_VERSION="0.2.0"
+set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/txn.cppm
+    PROPERTIES COMPILE_DEFINITIONS
+    "EXON_PKG_NAME=\"txn\";EXON_PKG_VERSION=\"0.2.0\""
 )
 
 add_executable(test-serde)
