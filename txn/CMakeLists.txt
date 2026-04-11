@@ -29,13 +29,13 @@ add_library(txn ALIAS txn-modules)
 set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/txn.cppm
     PROPERTIES COMPILE_DEFINITIONS
-    "EXON_PKG_NAME=\"txn\";EXON_PKG_VERSION=\"0.2.0\""
+    "EXON_PKG_NAME=\"txn\";EXON_PKG_VERSION=\"0.3.0\""
 )
 
-add_executable(test-serde)
-target_sources(test-serde PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests/serde.cpp
+add_executable(test-txn)
+target_sources(test-txn PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/txn.cpp
 )
-target_link_libraries(test-serde PRIVATE
+target_link_libraries(test-txn PRIVATE
     txn-modules
 )

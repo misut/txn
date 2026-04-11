@@ -109,7 +109,7 @@ inline auto txn_describe(WithMap*) {
         txn::field(&WithMap::env, "env"));
 }
 
-// --- Auto-reflection test structs (no TXN_DESCRIBE) ---
+// --- Auto-reflection test structs (no txn_describe) ---
 
 struct AutoPoint {
     int x;
@@ -152,33 +152,33 @@ MockValue make_table(MockTable t) { return MockValue{std::move(t)}; }
 
 void test_string() {
     auto v = MockValue{"hello"};
-    auto s = txn::from_value<std::string>(v);
-    check(s == "hello", "string from_value");
+    auto r = txn::from_value<std::string>(v);
+    check(r.has_value() && *r == "hello", "string from_value");
 }
 
 void test_integer() {
     auto v = MockValue{std::int64_t{42}};
-    auto i = txn::from_value<int>(v);
-    check(i == 42, "integer from_value");
+    auto r = txn::from_value<int>(v);
+    check(r.has_value() && *r == 42, "integer from_value");
 }
 
 void test_float() {
     auto v = MockValue{3.14};
-    auto f = txn::from_value<double>(v);
-    check(std::abs(f - 3.14) < 1e-9, "float from_value");
+    auto r = txn::from_value<double>(v);
+    check(r.has_value() && std::abs(*r - 3.14) < 1e-9, "float from_value");
 }
 
 void test_bool() {
     auto v = MockValue{true};
-    auto b = txn::from_value<bool>(v);
-    check(b == true, "bool from_value");
+    auto r = txn::from_value<bool>(v);
+    check(r.has_value() && *r == true, "bool from_value");
 }
 
 void test_simple_struct() {
     auto v = make_table({{"x", MockValue{std::int64_t{1}}},
                          {"y", MockValue{std::int64_t{2}}}});
-    auto p = txn::from_value<Point>(v);
-    check(p.x == 1 && p.y == 2, "simple struct from_value");
+    auto r = txn::from_value<Point>(v);
+    check(r.has_value() && r->x == 1 && r->y == 2, "simple struct from_value");
 }
 
 void test_nested_struct() {
@@ -190,12 +190,13 @@ void test_nested_struct() {
         {"server", MockValue{std::move(server)}},
         {"tags", MockValue{MockArray{MockValue{"web"}, MockValue{"prod"}}}}
     });
-    auto cfg = txn::from_value<Config>(v);
-    check(cfg.server.host == "localhost", "nested struct host");
-    check(cfg.server.port == 8080, "nested struct port");
-    check(cfg.server.debug == std::nullopt, "nested struct optional absent");
-    check(cfg.tags.size() == 2, "nested struct tags size");
-    check(cfg.tags[0] == "web", "nested struct tags[0]");
+    auto r = txn::from_value<Config>(v);
+    check(r.has_value(), "nested struct ok");
+    check(r->server.host == "localhost", "nested struct host");
+    check(r->server.port == 8080, "nested struct port");
+    check(r->server.debug == std::nullopt, "nested struct optional absent");
+    check(r->tags.size() == 2, "nested struct tags size");
+    check(r->tags[0] == "web", "nested struct tags[0]");
 }
 
 void test_optional_present() {
@@ -204,8 +205,8 @@ void test_optional_present() {
         {"port", MockValue{std::int64_t{80}}},
         {"debug", MockValue{true}}
     });
-    auto s = txn::from_value<Server>(v);
-    check(s.debug.has_value() && *s.debug == true, "optional present");
+    auto r = txn::from_value<Server>(v);
+    check(r.has_value() && r->debug.has_value() && *r->debug == true, "optional present");
 }
 
 void test_optional_absent() {
@@ -213,8 +214,8 @@ void test_optional_absent() {
         {"host", MockValue{"h"}},
         {"port", MockValue{std::int64_t{80}}}
     });
-    auto s = txn::from_value<Server>(v);
-    check(!s.debug.has_value(), "optional absent");
+    auto r = txn::from_value<Server>(v);
+    check(r.has_value() && !r->debug.has_value(), "optional absent");
 }
 
 void test_vector_primitives() {
@@ -223,8 +224,8 @@ void test_vector_primitives() {
         MockValue{std::int64_t{2}},
         MockValue{std::int64_t{3}}
     }};
-    auto vec = txn::from_value<std::vector<int>>(v);
-    check(vec.size() == 3 && vec[0] == 1 && vec[2] == 3, "vector primitives");
+    auto r = txn::from_value<std::vector<int>>(v);
+    check(r.has_value() && r->size() == 3 && (*r)[0] == 1 && (*r)[2] == 3, "vector primitives");
 }
 
 void test_vector_structs() {
@@ -232,9 +233,9 @@ void test_vector_structs() {
         MockValue{MockTable{{"x", MockValue{std::int64_t{1}}}, {"y", MockValue{std::int64_t{2}}}}},
         MockValue{MockTable{{"x", MockValue{std::int64_t{3}}}, {"y", MockValue{std::int64_t{4}}}}}
     }}}});
-    auto ws = txn::from_value<WithVecStruct>(v);
-    check(ws.points.size() == 2, "vector structs size");
-    check(ws.points[0].x == 1 && ws.points[1].y == 4, "vector structs values");
+    auto r = txn::from_value<WithVecStruct>(v);
+    check(r.has_value() && r->points.size() == 2, "vector structs size");
+    check(r->points[0].x == 1 && r->points[1].y == 4, "vector structs values");
 }
 
 void test_map() {
@@ -242,20 +243,15 @@ void test_map() {
         {"a", MockValue{std::int64_t{1}}},
         {"b", MockValue{std::int64_t{2}}}
     }}}});
-    auto wm = txn::from_value<WithMap>(v);
-    check(wm.env.size() == 2 && wm.env["a"] == 1 && wm.env["b"] == 2, "map");
+    auto r = txn::from_value<WithMap>(v);
+    check(r.has_value() && r->env.size() == 2 && r->env["a"] == 1 && r->env["b"] == 2, "map");
 }
 
 void test_missing_key_error() {
     auto v = make_table({{"host", MockValue{"h"}}});
-    bool caught = false;
-    try {
-        txn::from_value<Server>(v);
-    } catch (txn::ConversionError const& e) {
-        caught = true;
-        check(std::string{e.path()} == "port", "missing key error path");
-    }
-    check(caught, "missing key throws");
+    auto r = txn::from_value<Server>(v);
+    check(!r.has_value(), "missing key returns error");
+    check(r.error().path == "port", "missing key error path");
 }
 
 void test_type_mismatch_error() {
@@ -263,14 +259,25 @@ void test_type_mismatch_error() {
         {"host", MockValue{std::int64_t{123}}},
         {"port", MockValue{std::int64_t{80}}}
     });
-    bool caught = false;
-    try {
-        txn::from_value<Server>(v);
-    } catch (txn::ConversionError const& e) {
-        caught = true;
-        check(std::string{e.path()} == "host", "type mismatch error path");
-    }
-    check(caught, "type mismatch throws");
+    auto r = txn::from_value<Server>(v);
+    check(!r.has_value(), "type mismatch returns error");
+    check(r.error().path == "host", "type mismatch error path");
+}
+
+void test_nested_error_path() {
+    // Config -> Server -> port (wrong type). Verifies error escapes both
+    // describable-inside-describable layers and reports the full dotted path.
+    auto server = MockTable{
+        {"host", MockValue{"localhost"}},
+        {"port", MockValue{"not-an-int"}}
+    };
+    auto v = make_table({
+        {"server", MockValue{std::move(server)}},
+        {"tags", MockValue{MockArray{}}}
+    });
+    auto r = txn::from_value<Config>(v);
+    check(!r.has_value(), "nested type mismatch returns error");
+    check(r.error().path == "server.port", "nested error path is dotted");
 }
 
 void test_to_value_primitives() {
@@ -317,12 +324,12 @@ void test_roundtrip() {
     original.tags = {"api", "v2"};
 
     auto v = txn::to_value<MockValue>(original);
-    auto restored = txn::from_value<Config>(v);
-
-    check(restored.server.host == "example.com", "roundtrip host");
-    check(restored.server.port == 443, "roundtrip port");
-    check(restored.server.debug.has_value() && *restored.server.debug == true, "roundtrip debug");
-    check(restored.tags.size() == 2 && restored.tags[1] == "v2", "roundtrip tags");
+    auto r = txn::from_value<Config>(v);
+    check(r.has_value(), "roundtrip ok");
+    check(r->server.host == "example.com", "roundtrip host");
+    check(r->server.port == 443, "roundtrip port");
+    check(r->server.debug.has_value() && *r->server.debug == true, "roundtrip debug");
+    check(r->tags.size() == 2 && r->tags[1] == "v2", "roundtrip tags");
 }
 
 // --- Auto-reflection tests ---
@@ -330,8 +337,8 @@ void test_roundtrip() {
 void test_auto_simple() {
     auto v = make_table({{"x", MockValue{std::int64_t{7}}},
                          {"y", MockValue{std::int64_t{8}}}});
-    auto p = txn::from_value<AutoPoint>(v);
-    check(p.x == 7 && p.y == 8, "auto simple struct from_value");
+    auto r = txn::from_value<AutoPoint>(v);
+    check(r.has_value() && r->x == 7 && r->y == 8, "auto simple struct from_value");
 }
 
 void test_auto_to_value() {
@@ -347,9 +354,9 @@ void test_auto_with_optional() {
         {"host", MockValue{"h"}},
         {"port", MockValue{std::int64_t{80}}}
     });
-    auto s = txn::from_value<AutoServer>(v);
-    check(s.host == "h" && s.port == 80, "auto server fields");
-    check(!s.debug.has_value(), "auto optional absent");
+    auto r = txn::from_value<AutoServer>(v);
+    check(r.has_value() && r->host == "h" && r->port == 80, "auto server fields");
+    check(r.has_value() && !r->debug.has_value(), "auto optional absent");
 
     AutoServer out{"x", 1, true};
     auto ov = txn::to_value<MockValue>(out);
@@ -362,24 +369,25 @@ void test_auto_with_vector() {
         MockValue{std::int64_t{2}},
         MockValue{std::int64_t{3}}
     }}}});
-    auto w = txn::from_value<AutoWithVec>(v);
-    check(w.items.size() == 3 && w.items[2] == 3, "auto vector field");
+    auto r = txn::from_value<AutoWithVec>(v);
+    check(r.has_value() && r->items.size() == 3 && r->items[2] == 3, "auto vector field");
 }
 
 void test_auto_roundtrip() {
     AutoServer original{"example.com", 443, true};
     auto v = txn::to_value<MockValue>(original);
-    auto restored = txn::from_value<AutoServer>(v);
-    check(restored.host == "example.com", "auto roundtrip host");
-    check(restored.port == 443, "auto roundtrip port");
-    check(restored.debug.has_value() && *restored.debug == true, "auto roundtrip debug");
+    auto r = txn::from_value<AutoServer>(v);
+    check(r.has_value(), "auto roundtrip ok");
+    check(r->host == "example.com", "auto roundtrip host");
+    check(r->port == 443, "auto roundtrip port");
+    check(r->debug.has_value() && *r->debug == true, "auto roundtrip debug");
 }
 
 void test_describe_priority_over_auto() {
     // Aliased has a manual txn_describe with key "v"; auto-reflection is NOT used.
     auto v = make_table({{"v", MockValue{std::int64_t{42}}}});
-    auto a = txn::from_value<Aliased>(v);
-    check(a.value == 42, "Describable override reads key 'v'");
+    auto r = txn::from_value<Aliased>(v);
+    check(r.has_value() && r->value == 42, "Describable override reads key 'v'");
 
     Aliased out{99};
     auto ov = txn::to_value<MockValue>(out);
@@ -401,6 +409,7 @@ int main() {
     test_map();
     test_missing_key_error();
     test_type_mismatch_error();
+    test_nested_error_path();
     test_to_value_primitives();
     test_to_value_struct();
     test_to_value_optional_absent();

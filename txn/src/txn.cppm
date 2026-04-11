@@ -6,17 +6,9 @@ export namespace txn {
 
 // --- Error ---
 
-class ConversionError : public std::runtime_error {
-public:
-    ConversionError(std::string path, std::string const& msg)
-        : std::runtime_error(
-              path.empty() ? msg : std::format("{}: {}", path, msg))
-        , path_{std::move(path)} {}
-
-    std::string const& path() const { return path_; }
-
-private:
-    std::string path_;
+struct ConversionError {
+    std::string path;
+    std::string message;
 };
 
 // --- Type traits ---
@@ -118,17 +110,38 @@ concept ValueLike = requires(V const& v) {
 // --- Forward declarations ---
 
 template<typename T, ValueLike V>
-T from_value(V const& v);
+auto from_value(V const& v) -> std::expected<T, ConversionError>;
 
 template<typename T, ValueLike V>
-T from_value(V const& v, std::string const& path);
+auto from_value(V const& v, std::string const& path) -> std::expected<T, ConversionError>;
 
 template<ValueLike V, typename T>
 V to_value(T const& obj);
 
-// --- from_value implementation ---
+} // namespace txn
 
-namespace detail {
+// --- Internal: error propagation helpers ---
+
+// Early-return on std::expected error from inside convert_value.
+// Function/monadic helpers can't issue an outer return, so this must be a macro.
+// Variadic so commas in template arguments don't break the call.
+#define TXN_TRY(var, ...)                                                   \
+    auto _txn_##var = (__VA_ARGS__);                                        \
+    if (!_txn_##var)                                                        \
+        return std::unexpected(std::move(_txn_##var.error()));              \
+    auto&& var = *std::move(_txn_##var)
+
+namespace txn::detail {
+
+// Apply each callable in order; stop at the first one that returns an error.
+template<typename... Fs>
+auto for_each_until_error(Fs&&... fs)
+    -> std::expected<void, ConversionError>
+{
+    std::expected<void, ConversionError> result;
+    (void)((result = fs(), result.has_value()) && ...);
+    return result;
+}
 
 template<typename V>
 std::string type_name_of(V const& v) {
@@ -142,74 +155,79 @@ std::string type_name_of(V const& v) {
 }
 
 template<typename T, ValueLike V>
-T convert_value(V const& v, std::string const& path) {
+auto convert_value(V const& v, std::string const& path)
+    -> std::expected<T, ConversionError>
+{
     if constexpr (std::is_same_v<T, std::string>) {
         if (!v.is_string())
-            throw ConversionError(path,
-                std::format("expected string, got {}", type_name_of(v)));
+            return std::unexpected(ConversionError{path,
+                std::format("expected string, got {}", type_name_of(v))});
         return std::string{v.as_string()};
 
     } else if constexpr (std::is_same_v<T, bool>) {
         if (!v.is_bool())
-            throw ConversionError(path,
-                std::format("expected bool, got {}", type_name_of(v)));
+            return std::unexpected(ConversionError{path,
+                std::format("expected bool, got {}", type_name_of(v))});
         return v.as_bool();
 
     } else if constexpr (std::is_integral_v<T>) {
         if (!v.is_integer())
-            throw ConversionError(path,
-                std::format("expected integer, got {}", type_name_of(v)));
+            return std::unexpected(ConversionError{path,
+                std::format("expected integer, got {}", type_name_of(v))});
         auto val = v.as_integer();
         if (val < std::numeric_limits<T>::min() || val > std::numeric_limits<T>::max())
-            throw ConversionError(path,
-                std::format("value {} out of range for target type", val));
+            return std::unexpected(ConversionError{path,
+                std::format("value {} out of range for target type", val)});
         return static_cast<T>(val);
 
     } else if constexpr (std::is_floating_point_v<T>) {
         if (!v.is_float())
-            throw ConversionError(path,
-                std::format("expected float, got {}", type_name_of(v)));
+            return std::unexpected(ConversionError{path,
+                std::format("expected float, got {}", type_name_of(v))});
         return static_cast<T>(v.as_float());
 
     } else if constexpr (is_optional_v<T>) {
         using Inner = optional_inner_t<T>;
-        return std::optional<Inner>{convert_value<Inner, V>(v, path)};
+        TXN_TRY(inner, convert_value<Inner, V>(v, path));
+        return std::optional<Inner>{std::move(inner)};
 
     } else if constexpr (is_vector_v<T>) {
         if (!v.is_array())
-            throw ConversionError(path,
-                std::format("expected array, got {}", type_name_of(v)));
+            return std::unexpected(ConversionError{path,
+                std::format("expected array, got {}", type_name_of(v))});
         using Elem = vector_inner_t<T>;
         auto const& arr = v.as_array();
         std::vector<Elem> result;
         result.reserve(arr.size());
         for (std::size_t i = 0; i < arr.size(); ++i) {
             auto elem_path = std::format("{}[{}]", path, i);
-            result.push_back(convert_value<Elem, V>(arr[i], elem_path));
+            TXN_TRY(elem, convert_value<Elem, V>(arr[i], elem_path));
+            result.push_back(std::move(elem));
         }
         return result;
 
     } else if constexpr (is_map_v<T>) {
         if (!v.is_table())
-            throw ConversionError(path,
-                std::format("expected table, got {}", type_name_of(v)));
+            return std::unexpected(ConversionError{path,
+                std::format("expected table, got {}", type_name_of(v))});
         using Val = map_value_inner_t<T>;
         T result;
         for (auto const& [k, val] : v.as_table()) {
             auto entry_path = path.empty() ? k : std::format("{}.{}", path, k);
-            result.emplace(k, convert_value<Val, V>(val, entry_path));
+            TXN_TRY(elem, convert_value<Val, V>(val, entry_path));
+            result.emplace(k, std::move(elem));
         }
         return result;
 
     } else if constexpr (Describable<T>) {
         if (!v.is_table())
-            throw ConversionError(path,
-                std::format("expected table, got {}", type_name_of(v)));
+            return std::unexpected(ConversionError{path,
+                std::format("expected table, got {}", type_name_of(v))});
         auto desc = txn_describe(static_cast<T*>(nullptr));
         T result{};
         auto const& table = v.as_table();
-        std::apply([&](auto const&... fds) {
-            (([&] {
+        auto step = std::apply([&](auto const&... fds) {
+            return for_each_until_error([&]() -> std::expected<void, ConversionError> {
                 auto full_path = path.empty()
                     ? std::string{fds.key}
                     : std::format("{}.{}", path, fds.key);
@@ -220,27 +238,31 @@ T convert_value(V const& v, std::string const& path) {
                         result.*(fds.ptr) = std::nullopt;
                     } else {
                         using Inner = optional_inner_t<M>;
-                        result.*(fds.ptr) = convert_value<Inner, V>(it->second, full_path);
+                        TXN_TRY(inner, convert_value<Inner, V>(it->second, full_path));
+                        result.*(fds.ptr) = std::move(inner);
                     }
                 } else {
                     if (it == table.end()) {
-                        throw ConversionError(full_path, "missing required key");
+                        return std::unexpected(ConversionError{full_path, "missing required key"});
                     }
-                    result.*(fds.ptr) = convert_value<M, V>(it->second, full_path);
+                    TXN_TRY(value, convert_value<M, V>(it->second, full_path));
+                    result.*(fds.ptr) = std::move(value);
                 }
-            }()), ...);
+                return {};
+            }...);
         }, desc.fields);
+        if (!step) return std::unexpected(std::move(step.error()));
         return result;
 
     } else if constexpr (AutoReflectable<T>) {
         if (!v.is_table())
-            throw ConversionError(path,
-                std::format("expected table, got {}", type_name_of(v)));
+            return std::unexpected(ConversionError{path,
+                std::format("expected table, got {}", type_name_of(v))});
         auto const& table = v.as_table();
         T result{};
         constexpr auto N = refl::tuple_size_v<T>;
-        [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-            (([&] {
+        auto step = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            return for_each_until_error([&]() -> std::expected<void, ConversionError> {
                 constexpr auto key = refl::name_of<T, Is>();
                 auto full_path = path.empty()
                     ? std::string{key}
@@ -252,16 +274,20 @@ T convert_value(V const& v, std::string const& path) {
                         refl::get<Is>(result) = std::nullopt;
                     } else {
                         using Inner = optional_inner_t<M>;
-                        refl::get<Is>(result) = convert_value<Inner, V>(it->second, full_path);
+                        TXN_TRY(inner, convert_value<Inner, V>(it->second, full_path));
+                        refl::get<Is>(result) = std::move(inner);
                     }
                 } else {
                     if (it == table.end()) {
-                        throw ConversionError(full_path, "missing required key");
+                        return std::unexpected(ConversionError{full_path, "missing required key"});
                     }
-                    refl::get<Is>(result) = convert_value<M, V>(it->second, full_path);
+                    TXN_TRY(value, convert_value<M, V>(it->second, full_path));
+                    refl::get<Is>(result) = std::move(value);
                 }
-            }()), ...);
+                return {};
+            }...);
         }(std::make_index_sequence<N>{});
+        if (!step) return std::unexpected(std::move(step.error()));
         return result;
 
     } else {
@@ -356,17 +382,21 @@ V serialize_value(T const& obj) {
     }
 }
 
-} // namespace detail
+} // namespace txn::detail
+
+export namespace txn {
 
 // --- Public API ---
 
 template<typename T, ValueLike V>
-T from_value(V const& v) {
+auto from_value(V const& v) -> std::expected<T, ConversionError> {
     return detail::convert_value<T, V>(v, "");
 }
 
 template<typename T, ValueLike V>
-T from_value(V const& v, std::string const& path) {
+auto from_value(V const& v, std::string const& path)
+    -> std::expected<T, ConversionError>
+{
     return detail::convert_value<T, V>(v, path);
 }
 
@@ -374,5 +404,20 @@ template<ValueLike V, typename T>
 V to_value(T const& obj) {
     return detail::serialize_value<V, T>(obj);
 }
+
+#if __cpp_exceptions
+// Convenience wrapper for native targets that prefer throwing ergonomics.
+// Not available under -fno-exceptions (e.g. wasm32-wasi builds).
+template<typename T, ValueLike V>
+T from_value_or_throw(V const& v) {
+    auto r = from_value<T, V>(v);
+    if (!r)
+        throw std::runtime_error(
+            r.error().path.empty()
+                ? r.error().message
+                : std::format("{}: {}", r.error().path, r.error().message));
+    return *std::move(r);
+}
+#endif
 
 } // namespace txn
