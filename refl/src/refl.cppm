@@ -115,9 +115,9 @@ inline constexpr T const& external = external_storage<T>.value;
 // different storage objects, producing incorrect names. Extra T and I
 // template parameters force distinct instantiations and correct output.
 #if defined(_MSC_VER)
-template<typename, std::size_t, auto*>
+template<typename, std::size_t, auto* P>
 #else
-template<auto*>
+template<auto* P>
 #endif
 consteval std::string_view pretty_ptr() noexcept {
 #if defined(_MSC_VER)
