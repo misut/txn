@@ -13,7 +13,13 @@ if(MSVC)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 endif()
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../refl ${CMAKE_BINARY_DIR}/_deps/refl-build)
+include(FetchContent)
+FetchContent_Declare(cppx
+    GIT_REPOSITORY https://github.com/misut/cppx.git
+    GIT_TAG v0.1.0
+    GIT_SHALLOW ON
+)
+FetchContent_MakeAvailable(cppx)
 
 add_library(txn-modules)
 target_sources(txn-modules
@@ -21,7 +27,7 @@ target_sources(txn-modules
     ${CMAKE_CURRENT_SOURCE_DIR}/src/txn.cppm
 )
 target_link_libraries(txn-modules PUBLIC
-    refl
+    cppx
 )
 
 add_library(txn ALIAS txn-modules)
@@ -29,7 +35,7 @@ add_library(txn ALIAS txn-modules)
 set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/txn.cppm
     PROPERTIES COMPILE_DEFINITIONS
-    "EXON_PKG_NAME=\"txn\";EXON_PKG_VERSION=\"0.3.0\""
+    "EXON_PKG_NAME=\"txn\";EXON_PKG_VERSION=\"0.4.0\""
 )
 
 add_executable(test-txn)
