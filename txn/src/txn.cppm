@@ -405,19 +405,4 @@ V to_value(T const& obj) {
     return detail::serialize_value<V, T>(obj);
 }
 
-#if __cpp_exceptions
-// Convenience wrapper for native targets that prefer throwing ergonomics.
-// Not available under -fno-exceptions (e.g. wasm32-wasi builds).
-template<typename T, ValueLike V>
-T from_value_or_throw(V const& v) {
-    auto r = from_value<T, V>(v);
-    if (!r)
-        throw std::runtime_error(
-            r.error().path.empty()
-                ? r.error().message
-                : std::format("{}: {}", r.error().path, r.error().message));
-    return *std::move(r);
-}
-#endif
-
 } // namespace txn
