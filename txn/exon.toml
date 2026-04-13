@@ -1,6 +1,6 @@
 [package]
 name = "txn"
-version = "0.5.4"
+version = "0.5.5"
 description = "C++ serialization framework"
 authors = ["Geunryeol Park (misut)"]
 license = "MIT"

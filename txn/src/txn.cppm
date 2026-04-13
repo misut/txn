@@ -181,7 +181,10 @@ auto convert_value(V const& v, std::string const& path)
         return static_cast<T>(val);
 
     } else if constexpr (std::is_floating_point_v<T>) {
-        if (!v.is_float())
+        // Accept both float and integer — JSON doesn't distinguish between
+        // "16" and "16.0" (both are "number"), and as_float() on ValueLike
+        // implementations already handles the int→double conversion.
+        if (!v.is_float() && !v.is_integer())
             return std::unexpected(ConversionError{path,
                 std::format("expected float, got {}", type_name_of(v))});
         return static_cast<T>(v.as_float());
