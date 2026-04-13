@@ -16,7 +16,7 @@ endif()
 include(FetchContent)
 FetchContent_Declare(cppx
     GIT_REPOSITORY https://github.com/misut/cppx.git
-    GIT_TAG v1.0.1
+    GIT_TAG v1.0.2
     GIT_SHALLOW ON
 )
 FetchContent_MakeAvailable(cppx)
@@ -39,7 +39,7 @@ add_library(txn ALIAS txn-modules)
 set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/txn.cppm
     PROPERTIES COMPILE_DEFINITIONS
-    "EXON_PKG_NAME=\"txn\";EXON_PKG_VERSION=\"0.5.6\""
+    "EXON_PKG_NAME=\"txn\";EXON_PKG_VERSION=\"0.5.7\""
 )
 
 if(PROJECT_IS_TOP_LEVEL)
