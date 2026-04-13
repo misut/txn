@@ -39,7 +39,7 @@ add_library(txn ALIAS txn-modules)
 set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/txn.cppm
     PROPERTIES COMPILE_DEFINITIONS
-    "EXON_PKG_NAME=\"txn\";EXON_PKG_VERSION=\"0.5.7\""
+    "EXON_PKG_NAME=\"txn\";EXON_PKG_VERSION=\"0.6.0\""
 )
 
 if(PROJECT_IS_TOP_LEVEL)

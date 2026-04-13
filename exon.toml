@@ -1,2 +1,25 @@
-[workspace]
-members = ["txn"]
+[package]
+name = "txn"
+version = "0.6.0"
+description = "C++ serialization framework"
+authors = ["Geunryeol Park (misut)"]
+license = "MIT"
+type = "lib"
+standard = 23
+
+[dependencies]
+"github.com/misut/cppx" = "1.0.2"
+
+# Sanitizer CI: ASan/UBSan/LSan on macOS and Linux, MSVC AddressSanitizer
+# on Windows. exon ≥0.21.2 wraps these in if(PROJECT_IS_TOP_LEVEL), so
+# downstream FetchContent consumers see a clean libcppx-modules.a.
+[target.'cfg(os = "linux")'.build]
+cxxflags = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
+ldflags  = ["-fsanitize=address,undefined"]
+
+[target.'cfg(os = "macos")'.build]
+cxxflags = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
+ldflags  = ["-fsanitize=address,undefined"]
+
+[target.'cfg(os = "windows")'.build]
+cxxflags = ["/fsanitize=address"]
