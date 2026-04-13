@@ -21,6 +21,10 @@ FetchContent_Declare(cppx
 )
 FetchContent_MakeAvailable(cppx)
 
+if(TARGET txn)
+    return()
+endif()
+
 add_library(txn-modules)
 target_sources(txn-modules
     PUBLIC FILE_SET CXX_MODULES BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} FILES
@@ -35,38 +39,41 @@ add_library(txn ALIAS txn-modules)
 set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/txn.cppm
     PROPERTIES COMPILE_DEFINITIONS
-    "EXON_PKG_NAME=\"txn\";EXON_PKG_VERSION=\"0.5.1\""
+    "EXON_PKG_NAME=\"txn\";EXON_PKG_VERSION=\"0.5.2\""
 )
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(PROJECT_IS_TOP_LEVEL)
 
-    target_compile_options(txn-modules PRIVATE
-        -fsanitize=address,undefined
-        -fno-omit-frame-pointer
-    )
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 
-    target_link_options(txn-modules PRIVATE
-        -fsanitize=address,undefined
-    )
-endif()
+        target_compile_options(txn-modules PRIVATE
+            -fsanitize=address,undefined
+            -fno-omit-frame-pointer
+        )
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        target_link_options(txn-modules PRIVATE
+            -fsanitize=address,undefined
+        )
+    endif()
 
-    target_compile_options(txn-modules PRIVATE
-        -fsanitize=address,undefined
-        -fno-omit-frame-pointer
-    )
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 
-    target_link_options(txn-modules PRIVATE
-        -fsanitize=address,undefined
-    )
-endif()
+        target_compile_options(txn-modules PRIVATE
+            -fsanitize=address,undefined
+            -fno-omit-frame-pointer
+        )
 
-if(WIN32)
+        target_link_options(txn-modules PRIVATE
+            -fsanitize=address,undefined
+        )
+    endif()
 
-    target_compile_options(txn-modules PRIVATE
-        /fsanitize=address
-    )
+    if(WIN32)
+
+        target_compile_options(txn-modules PRIVATE
+            /fsanitize=address
+        )
+    endif()
 endif()
 
 add_executable(test-txn)
@@ -77,33 +84,36 @@ target_link_libraries(test-txn PRIVATE
     txn-modules
 )
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(PROJECT_IS_TOP_LEVEL)
 
-    target_compile_options(test-txn PRIVATE
-        -fsanitize=address,undefined
-        -fno-omit-frame-pointer
-    )
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 
-    target_link_options(test-txn PRIVATE
-        -fsanitize=address,undefined
-    )
-endif()
+        target_compile_options(test-txn PRIVATE
+            -fsanitize=address,undefined
+            -fno-omit-frame-pointer
+        )
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        target_link_options(test-txn PRIVATE
+            -fsanitize=address,undefined
+        )
+    endif()
 
-    target_compile_options(test-txn PRIVATE
-        -fsanitize=address,undefined
-        -fno-omit-frame-pointer
-    )
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 
-    target_link_options(test-txn PRIVATE
-        -fsanitize=address,undefined
-    )
-endif()
+        target_compile_options(test-txn PRIVATE
+            -fsanitize=address,undefined
+            -fno-omit-frame-pointer
+        )
 
-if(WIN32)
+        target_link_options(test-txn PRIVATE
+            -fsanitize=address,undefined
+        )
+    endif()
 
-    target_compile_options(test-txn PRIVATE
-        /fsanitize=address
-    )
+    if(WIN32)
+
+        target_compile_options(test-txn PRIVATE
+            /fsanitize=address
+        )
+    endif()
 endif()
