@@ -16,7 +16,7 @@ endif()
 include(FetchContent)
 FetchContent_Declare(cppx
     GIT_REPOSITORY https://github.com/misut/cppx.git
-    GIT_TAG v1.0.2
+    GIT_TAG v1.0.3
     GIT_SHALLOW ON
 )
 FetchContent_MakeAvailable(cppx)
@@ -39,19 +39,41 @@ add_library(txn ALIAS txn-modules)
 set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/txn.cppm
     PROPERTIES COMPILE_DEFINITIONS
-    "EXON_PKG_NAME=\"txn\";EXON_PKG_VERSION=\"0.6.0\""
+    "EXON_PKG_NAME=\"txn\";EXON_PKG_VERSION=\"0.6.1\""
 )
 
 if(PROJECT_IS_TOP_LEVEL)
 
-    target_compile_options(txn-modules PRIVATE
-        -fsanitize=address,undefined
-        -fno-omit-frame-pointer
-    )
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 
-    target_link_options(txn-modules PRIVATE
-        -fsanitize=address,undefined
-    )
+        target_compile_options(txn-modules PRIVATE
+            -fsanitize=address,undefined
+            -fno-omit-frame-pointer
+        )
+
+        target_link_options(txn-modules PRIVATE
+            -fsanitize=address,undefined
+        )
+    endif()
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+
+        target_compile_options(txn-modules PRIVATE
+            -fsanitize=address,undefined
+            -fno-omit-frame-pointer
+        )
+
+        target_link_options(txn-modules PRIVATE
+            -fsanitize=address,undefined
+        )
+    endif()
+
+    if(WIN32)
+
+        target_compile_options(txn-modules PRIVATE
+            /fsanitize=address
+        )
+    endif()
 endif()
 
 add_executable(test-txn)
@@ -64,12 +86,34 @@ target_link_libraries(test-txn PRIVATE
 
 if(PROJECT_IS_TOP_LEVEL)
 
-    target_compile_options(test-txn PRIVATE
-        -fsanitize=address,undefined
-        -fno-omit-frame-pointer
-    )
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 
-    target_link_options(test-txn PRIVATE
-        -fsanitize=address,undefined
-    )
+        target_compile_options(test-txn PRIVATE
+            -fsanitize=address,undefined
+            -fno-omit-frame-pointer
+        )
+
+        target_link_options(test-txn PRIVATE
+            -fsanitize=address,undefined
+        )
+    endif()
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+
+        target_compile_options(test-txn PRIVATE
+            -fsanitize=address,undefined
+            -fno-omit-frame-pointer
+        )
+
+        target_link_options(test-txn PRIVATE
+            -fsanitize=address,undefined
+        )
+    endif()
+
+    if(WIN32)
+
+        target_compile_options(test-txn PRIVATE
+            /fsanitize=address
+        )
+    endif()
 endif()
