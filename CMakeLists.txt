@@ -13,6 +13,40 @@ if(MSVC)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 endif()
 
+if(WIN32)
+function(exon_copy_windows_asan_runtime target)
+    get_target_property(_exon_target_type ${target} TYPE)
+    if(NOT _exon_target_type STREQUAL "EXECUTABLE")
+        return()
+    endif()
+
+    get_filename_component(_exon_compiler_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    set(_exon_asan_runtime "")
+    set(_exon_candidates
+        "${_exon_compiler_dir}/clang_rt.asan_dynamic-x86_64.dll"
+        "$ENV{VCToolsInstallDir}/bin/Hostx64/x64/clang_rt.asan_dynamic-x86_64.dll"
+    )
+
+    foreach(_exon_candidate IN LISTS _exon_candidates)
+        if(_exon_candidate AND EXISTS "${_exon_candidate}")
+            set(_exon_asan_runtime "${_exon_candidate}")
+            break()
+        endif()
+    endforeach()
+
+    if(NOT _exon_asan_runtime)
+        message(FATAL_ERROR
+            "Windows ASan runtime not found: clang_rt.asan_dynamic-x86_64.dll. "
+            "Run from a Visual Studio developer environment or install the MSVC ASan runtime.")
+    endif()
+
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${_exon_asan_runtime}"
+            "$<TARGET_FILE_DIR:${target}>/clang_rt.asan_dynamic-x86_64.dll")
+endfunction()
+endif()
+
 include(FetchContent)
 FetchContent_Declare(cppx
     GIT_REPOSITORY https://github.com/misut/cppx.git
@@ -117,3 +151,4 @@ if(PROJECT_IS_TOP_LEVEL)
         )
     endif()
 endif()
+exon_copy_windows_asan_runtime(test-txn)
