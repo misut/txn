@@ -2,11 +2,7 @@
 
 [[package]]
 name = "github.com/misut/cppx"
-version = "1.0.3"
-commit = "fd77003cb6fb4cabf8b8ccb247fb4f2b8aa256cc"
-
-[[package]]
-name = "github.com/misut/cppx"
+package = "cppx"
 version = "1.2.0"
 commit = "6597b1fa19a78a13851d05c3d5bf9ff0c79852f7"
 
