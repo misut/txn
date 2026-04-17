@@ -24,7 +24,7 @@ that satisfies the `ValueLike` concept.
 
 ```toml
 [dependencies]
-"github.com/misut/txn" = "0.6.0"
+"github.com/misut/txn" = "0.6.2"
 ```
 
 `txn` depends on
@@ -37,7 +37,7 @@ that satisfies the `ValueLike` concept.
 include(FetchContent)
 FetchContent_Declare(txn
     GIT_REPOSITORY https://github.com/misut/txn.git
-    GIT_TAG v0.6.0
+    GIT_TAG v0.6.2
     GIT_SHALLOW ON
 )
 FetchContent_MakeAvailable(txn)
