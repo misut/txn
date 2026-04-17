@@ -1,6 +1,6 @@
 [package]
 name = "txn"
-version = "0.6.1"
+version = "0.6.2"
 description = "C++ serialization framework"
 authors = ["Geunryeol Park (misut)"]
 license = "MIT"
@@ -8,7 +8,7 @@ type = "lib"
 standard = 23
 
 [dependencies]
-"github.com/misut/cppx" = "1.0.3"
+"github.com/misut/cppx" = "1.2.0"
 
 # Sanitizer CI: ASan/UBSan/LSan on macOS and Linux, MSVC AddressSanitizer
 # on Windows. exon ≥0.21.2 wraps these in if(PROJECT_IS_TOP_LEVEL), so
