@@ -173,9 +173,16 @@ actionable in larger documents.
 ```sh
 mise install
 intron install
-eval "$(intron env)"
-exon test
+intron exec -- exon test
 ```
+
+`intron install` reads this repo's `.intron.toml`, so the same default
+flow provisions MSVC on Windows and LLVM on macOS/Linux.
+
+If you want to activate the toolchain environment in the current shell
+instead of using `intron exec`, run `eval "$(intron env)"` on POSIX
+shells or `Invoke-Expression ((intron env) -join "`n")` on Windows
+PowerShell, then invoke `exon test` manually.
 
 ## Notes and limits
 
