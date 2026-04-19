@@ -49,13 +49,19 @@ function(exon_copy_windows_asan_runtime target)
             "$<TARGET_FILE_DIR:${target}>/clang_rt.asan_dynamic-x86_64.dll")
 endfunction()
 
+if(NOT DEFINED EXON_ENABLE_TEST_TARGETS)
+    set(EXON_ENABLE_TEST_TARGETS ON)
+endif()
+
 include(FetchContent)
-FetchContent_Declare(cppx
-    GIT_REPOSITORY https://github.com/misut/cppx.git
-    GIT_TAG v1.2.0
-    GIT_SHALLOW ON
-)
-FetchContent_MakeAvailable(cppx)
+if(NOT TARGET cppx)
+    FetchContent_Declare(cppx
+        GIT_REPOSITORY https://github.com/misut/cppx.git
+        GIT_TAG v1.2.0
+        GIT_SHALLOW ON
+    )
+    FetchContent_MakeAvailable(cppx)
+endif()
 
 if(TARGET txn)
     return()
@@ -112,6 +118,8 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
 endif()
 
+if(EXON_ENABLE_TEST_TARGETS)
+
 add_executable(test-txn)
 target_sources(test-txn PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/txn.cpp
@@ -154,3 +162,4 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
 endif()
 exon_copy_windows_asan_runtime(test-txn)
+endif()
