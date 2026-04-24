@@ -182,8 +182,10 @@ inline auto txn_from_value(txn::tag<Color>, V const& v, std::string const& path)
     }
     auto parse = [&](std::string_view sv) -> std::expected<unsigned char, txn::ConversionError> {
         unsigned int value = 0;
-        auto [ptr, ec] = std::from_chars(sv.begin(), sv.end(), value, 16);
-        if (ec != std::errc{} || ptr != sv.end() || value > 255) {
+        auto const* first = sv.data();
+        auto const* last = sv.data() + sv.size();
+        auto [ptr, ec] = std::from_chars(first, last, value, 16);
+        if (ec != std::errc{} || ptr != last || value > 255) {
             return std::unexpected(txn::ConversionError{path,
                 std::format("invalid hex byte '{}'", sv)});
         }
