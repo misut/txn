@@ -3,6 +3,16 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "*.md"
+      - "LICENSE"
+      - ".editorconfig"
+      - ".gitignore"
+      - ".claude/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -18,7 +28,7 @@ jobs:
             platform: aarch64-linux-gnu
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Resolve tool versions
         id: tool-versions
@@ -28,7 +38,7 @@ jobs:
           sed -n 's/^"vfox:misut\/mise-exon"[[:space:]]*=[[:space:]]*"\([^"]*\)"$/exon=\1/p' mise.toml >> "$GITHUB_OUTPUT"
 
       - name: Cache toolchains
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.intron/toolchains
           key: intron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.intron.toml') }}
@@ -53,7 +63,7 @@ jobs:
           fi
 
       - name: Cache exon
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.local/bin/exon
           key: exon-v${{ steps.tool-versions.outputs.exon }}-${{ runner.os }}-${{ runner.arch }}
@@ -75,7 +85,7 @@ jobs:
   wasm:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Resolve tool versions
         id: tool-versions
@@ -85,7 +95,7 @@ jobs:
           sed -n 's/^"vfox:misut\/mise-exon"[[:space:]]*=[[:space:]]*"\([^"]*\)"$/exon=\1/p' mise.toml >> "$GITHUB_OUTPUT"
 
       - name: Cache toolchains (wasm)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.intron/toolchains
           key: intron-wasm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.intron.toml') }}-wasi32-wasmtime43.0.1
@@ -107,7 +117,7 @@ jobs:
           intron default wasmtime 43.0.1
 
       - name: Cache exon
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.local/bin/exon
           key: exon-v${{ steps.tool-versions.outputs.exon }}-${{ runner.os }}-${{ runner.arch }}
@@ -129,7 +139,7 @@ jobs:
   windows:
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Resolve tool versions
         id: tool-versions
@@ -139,7 +149,7 @@ jobs:
           sed -n 's/^"vfox:misut\/mise-exon"[[:space:]]*=[[:space:]]*"\([^"]*\)"$/exon=\1/p' mise.toml >> "$GITHUB_OUTPUT"
 
       - name: Cache toolchains
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.intron/toolchains
           key: intron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.intron.toml') }}
@@ -161,7 +171,7 @@ jobs:
         run: intron install
 
       - name: Cache exon
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.local/bin/exon.exe
           key: exon-v${{ steps.tool-versions.outputs.exon }}-${{ runner.os }}-${{ runner.arch }}
