@@ -24,7 +24,7 @@ that satisfies the `ValueLike` concept.
 
 ```toml
 [dependencies]
-"github.com/misut/txn" = "0.6.2"
+"github.com/misut/txn" = "0.7.0"
 ```
 
 `txn` depends on
@@ -37,7 +37,7 @@ that satisfies the `ValueLike` concept.
 include(FetchContent)
 FetchContent_Declare(txn
     GIT_REPOSITORY https://github.com/misut/txn.git
-    GIT_TAG v0.6.2
+    GIT_TAG v0.7.0
     GIT_SHALLOW ON
 )
 FetchContent_MakeAvailable(txn)
@@ -49,11 +49,14 @@ target_link_libraries(your_target PRIVATE txn)
 | API | Purpose |
 | --- | --- |
 | `txn::from_value<T>(v)` | Convert a value object into `T`, returning `std::expected<T, txn::ConversionError>`. |
+| `txn::from_value<T>(v, txn::Mode::Partial)` | As above, but missing non-optional fields retain the struct's C++ default value. |
 | `txn::to_value<V>(obj)` | Convert a C++ object into the chosen value type `V`. |
+| `txn::Mode` | Deserialization mode: `Strict` (default, missing keys are errors) or `Partial` (missing keys fall through to C++ defaults). |
 | `txn::ConversionError` | Carries `path` and `message` for conversion failures. |
 | `txn::field` | Declares one mapped field in a manual descriptor. |
 | `txn::describe` | Builds a struct descriptor from `txn::field(...)` entries. |
 | `txn_describe(T*)` | User-defined override for custom keys or non-auto-reflectable types. |
+| `txn_from_value(txn::tag<T>, v, path)` | ADL-based customization point for types that want to accept alternative source shapes (e.g. a hex-string form of a color struct). |
 | `txn::ValueLike` | Concept describing the required shape of a value container. |
 
 ## Quick Start
@@ -138,6 +141,61 @@ inline auto txn_describe(Event*) {
 
 If both are available, `txn_describe` takes precedence over
 auto-reflection.
+
+## Partial Mode
+
+Missing non-optional fields are normally an error. `txn::Mode::Partial`
+relaxes that: fields not present in the source keep whatever value
+the struct's default-constructor produced. Useful for overlay configs
+and merge-on-top-of-defaults flows.
+
+```cpp
+struct Theme {
+    std::string accent = "blue";
+    int radius = 4;
+};
+
+// Source contains only {"accent": "tiffany"}.
+auto result = txn::from_value<Theme>(source, txn::Mode::Partial);
+// result->accent == "tiffany", result->radius == 4 (kept from default).
+```
+
+Partial mode still reports type mismatches (e.g. a string where an
+integer was expected). It only suppresses the "missing required key"
+class of error.
+
+## Custom Parser Hooks
+
+Define `txn_from_value(txn::tag<T>, v, path)` in the same namespace as
+`T` to let `T` accept alternative source shapes. The hook is consulted
+before the default reflection path; it can accept the value, decline
+(fall through to the default), or fail outright.
+
+```cpp
+struct Color { unsigned char r, g, b, a; };
+
+template<txn::ValueLike V>
+auto txn_from_value(txn::tag<Color>, V const& v, std::string const& path)
+    -> std::optional<std::expected<Color, txn::ConversionError>>
+{
+    if (!v.is_string()) return std::nullopt;           // decline; try reflection
+    auto s = v.as_string();
+    if (s.size() == 7 && s[0] == '#') {
+        return std::expected<Color, txn::ConversionError>{
+            Color{ /* parse s[1..] as #rrggbb */ }};
+    }
+    return std::expected<Color, txn::ConversionError>{std::unexpected(
+        txn::ConversionError{path, "invalid hex color"})};
+}
+```
+
+Return semantics:
+
+| Hook result | Meaning |
+| --- | --- |
+| `std::nullopt` | Hook declined; fall through to the default reflection path. |
+| `std::expected<T>{value}` | Hook handled the input successfully. |
+| `std::expected<T>{unexpected(e)}` | Hook tried to handle the input and failed; propagate `e`. |
 
 ## Error Handling
 

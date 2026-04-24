@@ -135,6 +135,71 @@ inline auto txn_describe(Aliased*) {
         txn::field(&Aliased::value, "v"));
 }
 
+// --- Structs exercising partial-mode defaults ---
+//
+// Defaults are attached via member-initializers so that Mode::Partial
+// deserialization preserves them when the JSON omits a field.
+
+struct ServerWithDefaults {
+    std::string host = "localhost";
+    int port = 8080;
+    std::optional<bool> debug;
+};
+inline auto txn_describe(ServerWithDefaults*) {
+    return txn::describe<ServerWithDefaults>(
+        txn::field(&ServerWithDefaults::host, "host"),
+        txn::field(&ServerWithDefaults::port, "port"),
+        txn::field(&ServerWithDefaults::debug, "debug"));
+}
+
+struct AutoServerWithDefaults {
+    std::string host = "localhost";
+    int port = 8080;
+    std::optional<bool> debug;
+};
+
+// --- Custom-parser ADL hook: Color accepts "#rrggbb" or {r,g,b,a} object ---
+
+struct Color {
+    unsigned char r = 0;
+    unsigned char g = 0;
+    unsigned char b = 0;
+    unsigned char a = 255;
+};
+
+// ADL hook: accepts hex strings like "#rrggbb". For any other shape
+// (e.g. the {r,g,b,a} object form), the hook declines by returning
+// std::nullopt and the default reflection path takes over.
+template<txn::ValueLike V>
+inline auto txn_from_value(txn::tag<Color>, V const& v, std::string const& path)
+    -> std::optional<std::expected<Color, txn::ConversionError>>
+{
+    if (!v.is_string()) return std::nullopt;
+    auto s = v.as_string();
+    if (s.size() != 7 || s[0] != '#') {
+        return std::expected<Color, txn::ConversionError>{std::unexpected(
+            txn::ConversionError{path, "hex color must be 7 chars: '#rrggbb'"})};
+    }
+    auto parse = [&](std::string_view sv) -> std::expected<unsigned char, txn::ConversionError> {
+        unsigned int value = 0;
+        auto const* first = sv.data();
+        auto const* last = sv.data() + sv.size();
+        auto [ptr, ec] = std::from_chars(first, last, value, 16);
+        if (ec != std::errc{} || ptr != last || value > 255) {
+            return std::unexpected(txn::ConversionError{path,
+                std::format("invalid hex byte '{}'", sv)});
+        }
+        return static_cast<unsigned char>(value);
+    };
+    auto r = parse(std::string_view{s}.substr(1, 2));
+    if (!r) return std::expected<Color, txn::ConversionError>{std::unexpected(std::move(r.error()))};
+    auto g = parse(std::string_view{s}.substr(3, 2));
+    if (!g) return std::expected<Color, txn::ConversionError>{std::unexpected(std::move(g.error()))};
+    auto b = parse(std::string_view{s}.substr(5, 2));
+    if (!b) return std::expected<Color, txn::ConversionError>{std::unexpected(std::move(b.error()))};
+    return std::expected<Color, txn::ConversionError>{Color{*r, *g, *b, 255}};
+}
+
 // --- Test helpers ---
 
 int failed = 0;
@@ -383,6 +448,121 @@ void test_auto_roundtrip() {
     check(r->debug.has_value() && *r->debug == true, "auto roundtrip debug");
 }
 
+// --- Partial mode tests ---
+
+void test_partial_describable_keeps_defaults() {
+    // Only "port" provided; host keeps its member-init default.
+    auto v = make_table({{"port", MockValue{std::int64_t{9000}}}});
+    auto r = txn::from_value<ServerWithDefaults>(v, txn::Mode::Partial);
+    check(r.has_value(), "partial describable ok");
+    check(r->host == "localhost", "partial keeps default host");
+    check(r->port == 9000, "partial reads provided port");
+    check(!r->debug.has_value(), "partial optional still absent");
+}
+
+void test_partial_auto_keeps_defaults() {
+    auto v = make_table({{"port", MockValue{std::int64_t{9000}}}});
+    auto r = txn::from_value<AutoServerWithDefaults>(v, txn::Mode::Partial);
+    check(r.has_value(), "partial auto ok");
+    check(r->host == "localhost", "partial auto keeps default host");
+    check(r->port == 9000, "partial auto reads provided port");
+}
+
+void test_partial_empty_table_keeps_all_defaults() {
+    auto v = make_table({});
+    auto r = txn::from_value<ServerWithDefaults>(v, txn::Mode::Partial);
+    check(r.has_value(), "empty partial ok");
+    check(r->host == "localhost" && r->port == 8080,
+        "empty partial keeps all defaults");
+}
+
+void test_strict_still_errors_on_missing() {
+    // Default mode must still error on missing non-optional field.
+    auto v = make_table({{"port", MockValue{std::int64_t{9000}}}});
+    auto r = txn::from_value<ServerWithDefaults>(v);
+    check(!r.has_value(), "strict still errors on missing key");
+}
+
+void test_partial_type_mismatch_still_errors() {
+    // Partial tolerates absence; it does NOT tolerate wrong types.
+    auto v = make_table({{"port", MockValue{"not a number"}}});
+    auto r = txn::from_value<ServerWithDefaults>(v, txn::Mode::Partial);
+    check(!r.has_value(), "partial still errors on type mismatch");
+    check(r.error().path == "port", "partial type-mismatch path");
+}
+
+void test_partial_nested_struct() {
+    // Config contains a Server; Partial should descend into children
+    // and keep defaults at every level.
+    struct Cfg {
+        ServerWithDefaults server;
+        std::vector<std::string> tags;
+    };
+    // Use a local txn_describe inside a helper namespace to avoid
+    // polluting the global namespace. Simpler: just auto-reflect.
+    // AutoReflectable requires cppx::Reflectable; all plain-data struct
+    // types here satisfy it.
+    auto inner = make_table({{"port", MockValue{std::int64_t{1234}}}});
+    auto v = make_table({
+        {"server", MockValue{std::move(inner.as_table())}},
+        {"tags", MockValue{MockArray{MockValue{"a"}}}}
+    });
+    auto r = txn::from_value<Cfg>(v, txn::Mode::Partial);
+    check(r.has_value(), "partial nested ok");
+    check(r->server.host == "localhost", "partial nested keeps inner default");
+    check(r->server.port == 1234, "partial nested reads inner override");
+    check(r->tags.size() == 1, "partial nested tags propagated");
+}
+
+// --- Custom-parser hook tests ---
+
+void test_custom_parser_hex_string() {
+    auto v = MockValue{"#0abab5"};
+    auto r = txn::from_value<Color>(v);
+    check(r.has_value(), "hex hook parse ok");
+    check(r->r == 0x0a && r->g == 0xba && r->b == 0xb5 && r->a == 0xff,
+        "hex hook bytes correct");
+}
+
+void test_custom_parser_decline_falls_back_to_reflection() {
+    // Object shape: hook declines, reflection picks up the r/g/b/a fields.
+    auto v = make_table({
+        {"r", MockValue{std::int64_t{10}}},
+        {"g", MockValue{std::int64_t{186}}},
+        {"b", MockValue{std::int64_t{181}}},
+        {"a", MockValue{std::int64_t{255}}}
+    });
+    auto r = txn::from_value<Color>(v);
+    check(r.has_value(), "object shape ok via reflection fallback");
+    check(r->r == 10 && r->g == 186 && r->b == 181 && r->a == 255,
+        "object-shape bytes correct");
+}
+
+void test_custom_parser_propagates_error() {
+    auto v = MockValue{"not-a-hex"};
+    auto r = txn::from_value<Color>(v);
+    check(!r.has_value(), "hex hook error propagates");
+    check(r.error().message.contains("hex"),
+        "hex hook error message mentions hex");
+}
+
+void test_custom_parser_with_partial_mode_in_nested_struct() {
+    // Confirms hook + partial mode co-exist: a struct containing a Color
+    // can be partially populated, and the Color field is still parsed by
+    // the hook when present.
+    struct Palette {
+        Color primary;
+        Color secondary;
+    };
+    auto v = make_table({{"primary", MockValue{"#ff0000"}}});
+    auto r = txn::from_value<Palette>(v, txn::Mode::Partial);
+    check(r.has_value(), "partial palette ok");
+    check(r->primary.r == 255 && r->primary.g == 0 && r->primary.b == 0,
+        "partial palette hook applied");
+    check(r->secondary.r == 0 && r->secondary.a == 255,
+        "partial palette kept default Color{}");
+}
+
 void test_describe_priority_over_auto() {
     // Aliased has a manual txn_describe with key "v"; auto-reflection is NOT used.
     auto v = make_table({{"v", MockValue{std::int64_t{42}}}});
@@ -421,6 +601,18 @@ int main() {
     test_auto_with_vector();
     test_auto_roundtrip();
     test_describe_priority_over_auto();
+
+    test_partial_describable_keeps_defaults();
+    test_partial_auto_keeps_defaults();
+    test_partial_empty_table_keeps_all_defaults();
+    test_strict_still_errors_on_missing();
+    test_partial_type_mismatch_still_errors();
+    test_partial_nested_struct();
+
+    test_custom_parser_hex_string();
+    test_custom_parser_decline_falls_back_to_reflection();
+    test_custom_parser_propagates_error();
+    test_custom_parser_with_partial_mode_in_nested_struct();
 
     if (failed > 0) {
         std::println(std::cerr, "\n{} test(s) failed", failed);

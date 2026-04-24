@@ -11,6 +11,39 @@ struct ConversionError {
     std::string message;
 };
 
+// --- Deserialization mode ---
+
+// Strict (default): every non-optional field in a struct must be present
+// in the source value, otherwise a "missing required key" error is
+// returned.
+//
+// Partial: missing non-optional fields are tolerated; the struct retains
+// whatever default value the type's C++ default-constructor produced.
+// Useful for loading overlay configs on top of hard-coded defaults.
+enum class Mode { Strict, Partial };
+
+// --- Customization-point tag ---
+//
+// `txn::tag<T>` is the disambiguator for the ADL-based `txn_from_value`
+// customization point. A type that wants to accept a shape other than
+// the default reflected one defines an overload like:
+//
+//   namespace mylib {
+//       template<txn::ValueLike V>
+//       auto txn_from_value(txn::tag<Color>, V const& v,
+//                           std::string const& path)
+//           -> std::optional<std::expected<Color, txn::ConversionError>>;
+//   }
+//
+// Semantics:
+//   - nullopt                       → hook declines; fall back to the
+//                                     default reflected path.
+//   - expected<T>{value}            → hook handled the input; use value.
+//   - expected<T>{unexpected(err)}  → hook tried but failed; propagate
+//                                     the error immediately.
+template<typename T>
+struct tag {};
+
 // --- Type traits ---
 
 template<typename>
@@ -107,13 +140,30 @@ concept ValueLike = requires(V const& v) {
     { v.as_bool() } -> std::convertible_to<bool>;
 };
 
+// Detects whether a custom `txn_from_value(tag<T>, V, path)` hook
+// exists for T. Found via ADL, so the overload must live in a namespace
+// associated with T (usually the same namespace T is declared in).
+template<typename T, typename V>
+concept HasCustomParser = requires(V const& v, std::string const& p) {
+    { txn_from_value(tag<T>{}, v, p) }
+        -> std::same_as<std::optional<std::expected<T, ConversionError>>>;
+};
+
 // --- Forward declarations ---
 
 template<typename T, ValueLike V>
 auto from_value(V const& v) -> std::expected<T, ConversionError>;
 
 template<typename T, ValueLike V>
-auto from_value(V const& v, std::string const& path) -> std::expected<T, ConversionError>;
+auto from_value(V const& v, Mode mode) -> std::expected<T, ConversionError>;
+
+template<typename T, ValueLike V>
+auto from_value(V const& v, std::string const& path)
+    -> std::expected<T, ConversionError>;
+
+template<typename T, ValueLike V>
+auto from_value(V const& v, std::string const& path, Mode mode)
+    -> std::expected<T, ConversionError>;
 
 template<ValueLike V, typename T>
 V to_value(T const& obj);
@@ -155,9 +205,24 @@ std::string type_name_of(V const& v) {
 }
 
 template<typename T, ValueLike V>
-auto convert_value(V const& v, std::string const& path)
+auto convert_value(V const& v, std::string const& path, Mode mode)
     -> std::expected<T, ConversionError>
 {
+    // Customization point: if the type defines txn_from_value(tag<T>,
+    // value, path), consult it first. The hook can handle alternative
+    // source shapes (e.g. Color accepting "#rrggbb" in addition to
+    // {r,g,b,a}) and decline (nullopt) to fall through to the default
+    // reflection path for other shapes.
+    if constexpr (HasCustomParser<T, V>) {
+        auto hook = txn_from_value(tag<T>{}, v, path);
+        if (hook.has_value()) {
+            // The hook took responsibility for this value — either a
+            // successful parse or an explicit error.
+            return *std::move(hook);
+        }
+        // nullopt: hook declined; fall through to the built-in path.
+    }
+
     if constexpr (std::is_same_v<T, std::string>) {
         if (!v.is_string())
             return std::unexpected(ConversionError{path,
@@ -191,7 +256,7 @@ auto convert_value(V const& v, std::string const& path)
 
     } else if constexpr (is_optional_v<T>) {
         using Inner = optional_inner_t<T>;
-        TXN_TRY(inner, convert_value<Inner, V>(v, path));
+        TXN_TRY(inner, convert_value<Inner, V>(v, path, mode));
         return std::optional<Inner>{std::move(inner)};
 
     } else if constexpr (is_vector_v<T>) {
@@ -204,7 +269,7 @@ auto convert_value(V const& v, std::string const& path)
         result.reserve(arr.size());
         for (std::size_t i = 0; i < arr.size(); ++i) {
             auto elem_path = std::format("{}[{}]", path, i);
-            TXN_TRY(elem, convert_value<Elem, V>(arr[i], elem_path));
+            TXN_TRY(elem, convert_value<Elem, V>(arr[i], elem_path, mode));
             result.push_back(std::move(elem));
         }
         return result;
@@ -217,7 +282,7 @@ auto convert_value(V const& v, std::string const& path)
         T result;
         for (auto const& [k, val] : v.as_table()) {
             auto entry_path = path.empty() ? k : std::format("{}.{}", path, k);
-            TXN_TRY(elem, convert_value<Val, V>(val, entry_path));
+            TXN_TRY(elem, convert_value<Val, V>(val, entry_path, mode));
             result.emplace(k, std::move(elem));
         }
         return result;
@@ -241,14 +306,18 @@ auto convert_value(V const& v, std::string const& path)
                         result.*(fds.ptr) = std::nullopt;
                     } else {
                         using Inner = optional_inner_t<M>;
-                        TXN_TRY(inner, convert_value<Inner, V>(it->second, full_path));
+                        TXN_TRY(inner, convert_value<Inner, V>(it->second, full_path, mode));
                         result.*(fds.ptr) = std::move(inner);
                     }
                 } else {
                     if (it == table.end()) {
+                        if (mode == Mode::Partial) {
+                            // Keep the default-initialized value on result{}.
+                            return {};
+                        }
                         return std::unexpected(ConversionError{full_path, "missing required key"});
                     }
-                    TXN_TRY(value, convert_value<M, V>(it->second, full_path));
+                    TXN_TRY(value, convert_value<M, V>(it->second, full_path, mode));
                     result.*(fds.ptr) = std::move(value);
                 }
                 return {};
@@ -277,14 +346,18 @@ auto convert_value(V const& v, std::string const& path)
                         cppx::reflect::get<Is>(result) = std::nullopt;
                     } else {
                         using Inner = optional_inner_t<M>;
-                        TXN_TRY(inner, convert_value<Inner, V>(it->second, full_path));
+                        TXN_TRY(inner, convert_value<Inner, V>(it->second, full_path, mode));
                         cppx::reflect::get<Is>(result) = std::move(inner);
                     }
                 } else {
                     if (it == table.end()) {
+                        if (mode == Mode::Partial) {
+                            // Keep the default-initialized value on result{}.
+                            return {};
+                        }
                         return std::unexpected(ConversionError{full_path, "missing required key"});
                     }
-                    TXN_TRY(value, convert_value<M, V>(it->second, full_path));
+                    TXN_TRY(value, convert_value<M, V>(it->second, full_path, mode));
                     cppx::reflect::get<Is>(result) = std::move(value);
                 }
                 return {};
@@ -393,14 +466,26 @@ export namespace txn {
 
 template<typename T, ValueLike V>
 auto from_value(V const& v) -> std::expected<T, ConversionError> {
-    return detail::convert_value<T, V>(v, "");
+    return detail::convert_value<T, V>(v, "", Mode::Strict);
+}
+
+template<typename T, ValueLike V>
+auto from_value(V const& v, Mode mode) -> std::expected<T, ConversionError> {
+    return detail::convert_value<T, V>(v, "", mode);
 }
 
 template<typename T, ValueLike V>
 auto from_value(V const& v, std::string const& path)
     -> std::expected<T, ConversionError>
 {
-    return detail::convert_value<T, V>(v, path);
+    return detail::convert_value<T, V>(v, path, Mode::Strict);
+}
+
+template<typename T, ValueLike V>
+auto from_value(V const& v, std::string const& path, Mode mode)
+    -> std::expected<T, ConversionError>
+{
+    return detail::convert_value<T, V>(v, path, mode);
 }
 
 template<ValueLike V, typename T>
