@@ -1,0 +1,12 @@
+[package]
+name = "txn-partial-config"
+version = "0.1.0"
+description = "Partial mode example for the txn serialization library (overlay configs with defaults)"
+type = "bin"
+standard = 23
+
+[sync]
+cmake-in-root = false
+
+[dependencies.path]
+txn = "../.."

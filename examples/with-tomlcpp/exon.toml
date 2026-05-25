@@ -1,0 +1,15 @@
+[package]
+name = "txn-with-tomlcpp"
+version = "0.1.0"
+description = "Real-world integration example: txn + tomlcpp (primary ValueLike provider)"
+type = "bin"
+standard = 23
+
+[sync]
+cmake-in-root = false
+
+[dependencies]
+"github.com/misut/tomlcpp" = "0.3.1"
+
+[dependencies.path]
+txn = "../.."

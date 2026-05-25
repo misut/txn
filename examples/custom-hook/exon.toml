@@ -1,0 +1,12 @@
+[package]
+name = "txn-custom-hook"
+version = "0.1.0"
+description = "Custom parser hook example for the txn serialization library (ADL txn_from_value)"
+type = "bin"
+standard = 23
+
+[sync]
+cmake-in-root = false
+
+[dependencies.path]
+txn = "../.."
