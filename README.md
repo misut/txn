@@ -83,6 +83,25 @@ auto cfg = *result;
 auto serialized = txn::to_value<SomeValue>(cfg);
 ```
 
+## Examples
+
+Runnable, focused examples live in `examples/`. Each is a small independent package you can build and run with the standard toolchain.
+
+```sh
+cd examples/<name>
+mise exec -- exon sync
+mise exec -- exon build
+mise exec -- exon run
+```
+
+- `basic-usage` — Auto-reflection, `std::optional`, `std::vector`, nesting, roundtrip.
+- `manual-describe` — `txn_describe` + custom/renamed keys (takes precedence over auto-reflection).
+- `custom-hook` — ADL `txn_from_value` hook for alternative shapes (hex color string vs object).
+- `partial-config` — `Mode::Partial` for overlay configs that preserve C++ member defaults.
+- `with-tomlcpp` — Real end-to-end with the primary `ValueLike` provider (`tomlcpp`): parse TOML → reflected struct → roundtrip.
+
+These examples are the recommended way to see txn in action.
+
 ## `ValueLike` Concept
 
 Your value type must provide the capabilities `txn` reads from:

@@ -1,0 +1,12 @@
+[package]
+name = "txn-basic-usage"
+version = "0.1.0"
+description = "Basic usage example for the txn serialization library (auto-reflection, roundtrip)"
+type = "bin"
+standard = 23
+
+[sync]
+cmake-in-root = false
+
+[dependencies.path]
+txn = "../.."
